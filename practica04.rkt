@@ -1,36 +1,39 @@
 #lang plai
 
 ;; Tipo de datos que representa la sintaxis abstracta de RCFWAEL
-(define-type RCFWAEL
+(define-type CFWAEL
   [num (n number?)]
+  [caracter (c char?)]
+  [cadena (s string?)]
   [bolean (b boolean?)]
+  [es-boleano? (bol CFWAEL?)]
+  [es-caracter? (cara CFWAEL?)]
+  [es-lista? (eslis CFWAEL?)]
+  [es-cadena? (cade CFWAEL?)]
   [id (v symbol?)]
   [binop (fun symbol?)
-         (exp-izq RCFWAEL?)
-         (exp-der RCFWAEL?)]
-  [mif (con-exp RCFWAEL?)
-       (then-exp RCFWAEL?)
-       (else-exp RCFWAEL?)]
+         (exp-izq CFWAEL?)
+         (exp-der CFWAEL?)]
+  [iff (con-exp CFWAEL?)
+       (then-exp CFWAEL?)
+       (else-exp CFWAEL?)]
   [with (arterisco boolean?)
         (vars (listof bind?)) 
-        (body RCFWAEL?)]
+        (body CFWAEL?)]
   [fun (param-for (listof symbol?)) 
-       (fun-body RCFWAEL?)]
-  [rec (params-rec (listof bind?))
-    (cuerpo RCFWAEL?)]
-  [app (fun-exp RCFWAEL?) (param-reales (listof RCFWAEL?))]
+       (fun-body CFWAEL?)]
+  [app (fun-exp CFWAEL?) (param-reales (listof CFWAEL?))]
   [lempty]
-  [lcons (cabeza RCFWAEL?) (resto RCFWAEL?)]
-  [lcar (lista RCFWAEL?)]
-  [lcdr (lista RCFWAEL?)]
-  [ltake (numero RCFWAEL?) (lista RCFWAEL?)])
+  [lcons (cabeza CFWAEL?) (resto CFWAEL?)]
+  [lcar (lista CFWAEL?)]
+  [lcdr (lista CFWAEL?)])
 
 
 ;; Tipo de dato que representa un valor ligado a un identificador, 
 ;; un Binding consiste de un id de tipo symbol y un valor de tipo FWAEL
 (define-type Binding
   [bind (nombre symbol?)
-        (valor RCFWAEL?)])
+        (valor CFWAEL?)])
 
 ; Tenemos ambientes procedurales
 ;; Nos permite saber si una expresion es un ambiente.
@@ -43,7 +46,7 @@
 ;; Crea una funcion la cual se encarga de representar los ambientes, si
 ;; el nombre corresponde con el bound-name se regresa el valor, si no
 ;; se busca en el siguiente aSub
-;; aSub: symbol -> RCFWAEL-Value -> procedure -> procedure 
+;; aSub: symbol -> CFWAEL-Value -> procedure -> procedure 
 (define aSub
   (lambda (bound-name bound-value resto-amb)
     (lambda (nombre)
@@ -64,18 +67,28 @@
 
 
 ;; Tipos de datos que representan los valores de retorno de nuestro interprete
-(define-type RCFWAEL-Value
+(define-type CFWAEL-Value
   [numV (n number?)]
   [boolV (b boolean?)]
   [closureV (parametros (listof symbol?))
-            (cuerpo RCFWAEL?)
+            (cuerpo CFWAEL?)
             (env Ambiente?)]
-  [exprV (expre RCFWAEL?)
+  [exprV (expre CFWAEL?)
          (env Ambiente?)]
   [emptyV]
-  [consV (cabeza RCFWAEL-Value?)
-          (resto RCFWAEL-Value?)])
+  [consV (cabeza CFWAEL-Value?)
+          (resto CFWAEL-Value?)])
 
+
+;;
+;;
+(define-type Tipo
+  [tnumber]
+  [tchar]
+  [tboolean]
+  [tstring]
+  [tlist]
+  [tlistof (t Tipo?)])
 
 ;; Dada una lista de tuplas, donde cada tupla contiene un identificador
 ;; y un valor, regresa una lista de binding, que es la representacion en
@@ -104,20 +117,25 @@
   (lambda (expresion)
     (cond
       [(number? expresion) (num expresion)]
+      [(char? expresion) (caracter expresion)]
+      [(string? expresion) (cadena expresion)]
       [(symbol? expresion) (if (symbol=? expresion 'lempty)
                                (lempty)
                                (id expresion))]
       [(boolean? expresion) (bolean expresion)]
       [(list? expresion)
        (case (car expresion)
-         [(+ - * / = < > <= >= and or) (binop (car expresion)
+         [(+ - * / = < > <= >= and or string-append) (binop (car expresion)
                            (parser (cadr expresion))
                            (parser (caddr expresion)))]
+         [(boolean?) (es-boleano? (parser (cadr expresion)))]
+         [(char?) (es-caracter? (parser (cadr expresion)))]
+         [(list?) (es-lista? (parser (cadr expresion)))]
+         [(string?) (es-cadena? (parser (cadr expresion)))]
          [(fun) (fun (cadr expresion)
                      (parser (caddr expresion)))]
-         [(rec) (rec (parsea-bindings (cadr expresion))
-                  (parser (caddr expresion)))]
-         [(if) (mif (parser (cadr expresion))
+
+         [(if) (iff (parser (cadr expresion))
                                        (parser (caddr expresion))
                                        (parser (cadddr expresion)))]
          [(with) (with #f 
@@ -131,92 +149,107 @@
                          (parser (caddr expresion)))]
          [(lcar) (lcar (parser (cadr expresion)))]
          [(lcdr) (lcdr (parser (cadr expresion)))]
-         [(ltake) (ltake (parser (cadr expresion)) 
-                         (parser (caddr expresion)))]
          [else (app (parser (car expresion))
                     (map parser (cdr expresion)))]
          )]
       )))
 
 
-;; Punto Estricto evalua una exprV hasta reducirla a un valor,
-;; ya sea una lista, boleano o numero.
-;; punto-estricto: RCFWAEL -> RCFWAEL-Value
-(define punto-estricto
-  (lambda (expr)
-    (type-case RCFWAEL-Value expr
-      [exprV (ex am) (punto-estricto (interp ex am))]
-      [else expr]
+;;
+(define type-of
+  (lambda (expres)
+    (type-of-amb expres (mtSub))))
+
+(define type-of-amb
+  (lambda (expresion amb)
+      (type-case CFWAEL expresion
+        [num (n) (tnumber)]
+        [caracter (c) (tchar)]
+        [cadena (s) (tstring)]
+        [bolean (b) (tboolean)]
+        [es-boleano? (e) (interp (bolean (equal? (type-of-amb e amb) (tboolean))) amb)]
+        [es-caracter? (e) (interp (bolean (equal? (type-of-amb e amb) (tchar))) amb)]
+        [es-lista? (e) (interp (bolean (equal? (type-of-amb e amb) (tlist))) amb)]
+        [es-cadena? (e) (interp (bolean (equal? (type-of-amb e amb) (tstring))) amb)]
+        [binop (fun lizq lder) (checa-fun fun 
+                                          (type-of-amb lizq amb)
+                                          (type-of-amb lder amb))]
+        [else "Error en el checador de tipos"]
+        )))
+
+
+
+;;
+(define checa-fun
+  (lambda (f l r)
+    (case f
+      [(+ - * /) (if (and (equal? l (tnumber))
+                    (equal? r (tnumber)))
+               (tnumber)
+               (string-append (string-append "Error: En " (symbol->string f)) 
+                              " se esperan argumentos de tipo number"))]
+      [(= < > <= >=) (if (and (equal? l (tnumber))
+                    (equal? r (tnumber)))
+               (tboolean)
+               (string-append (string-append "Error: En " (symbol->string f)) 
+                              " se esperan argumentos de tipo number"))]
+      [(and or ) (if (and (equal? l (tboolean))
+                    (equal? r (tboolean)))
+               (tboolean)
+               (string-append (string-append "Error: En " (symbol->string f)) 
+                              " se esperan argumentos de tipo boolean"))]
       )))
 
+;;
+(define prueba
+  (lambda (e)
+    (type-of (parser e))))
+;-------------------------------------------------------------------------------
+;-------------------------------------------------------------------------------
+;------------------------ Cosas Para Interpretar -------------------------------
+;-------------------------------------------------------------------------------
+;-------------------------------------------------------------------------------
+
+
 ;; Reduce el arbol de sintaxis abstracta a un numero, booleano o lista.
-;; interp: RCFWAEL -> RCFWAEL-Value
+;; interp: CFWAEL -> CFWAEL-Value
 (define interp
   (lambda (expr amb)
-    (type-case RCFWAEL expr
+    (type-case CFWAEL expr
       [num (n) (numV n)]
       [bolean (b) (boolV b)]
       [id (v) (lookup v amb)]
       [binop (fun lizq lder) (opera-rcfwael fun 
-                                          (punto-estricto (interp lizq amb)) 
-                                          (punto-estricto (interp lder amb)))]
+                                          (interp lizq amb) 
+                                          (interp lder amb))]
       [lempty () (emptyV)]
-      [lcons (cabeza resto) (consV (exprV cabeza amb)
-                                    (exprV resto amb))]
-      [lcar (lista) (let {[lst-eval (punto-estricto (interp lista amb))]}
-                      (type-case RCFWAEL-Value lst-eval
-                        [consV (cabeza t) (punto-estricto cabeza)]
-                        [else (error 'interp "Se debe de pasar una lista")]
-                        ))] 
-      [lcdr (lista) (let {[lst-eval (punto-estricto (interp lista amb))]}
-                      (type-case RCFWAEL-Value lst-eval
-                        [consV (h resto) resto]
-                        [else (error 'interp "Se debe de pasar una lista")]))]
-      [ltake (n-ele lista-eva) (let {[valor-n (interp n-ele amb)]
-                                     [lst-eval (punto-estricto (interp lista-eva amb))]}
-                                 (type-case RCFWAEL-Value lst-eval
-                                   [consV (cabeza resto) 
-                                          (if (= 0 (numV-n valor-n))
-                                              (emptyV)
-                                              (consV cabeza
-                                                     (interp (ltake (num (- (numV-n valor-n) 1))
-                                                                    (lcons-resto lista-eva)) amb)
-                                                     ))]
-                                   [else (error 'interp "No es una Lista")]
-                                   ))]
-      [mif (co-exp th-exp el-exp) (if (boolV-b (punto-estricto(interp co-exp amb)))
+      [lcons (cabeza resto) (consV (interp cabeza amb)
+                                    (interp resto amb))]
+      [lcar (lista) (consV-cabeza (interp lista amb))] 
+      [lcdr (lista) (consV-resto (interp lista amb))]
+      [iff (co-exp th-exp el-exp) (if (boolV-b (interp co-exp amb))
                                       (interp th-exp amb)
                                       (interp el-exp amb))]
       [with (ast params body) (if ast
                                   (interp body (foldl (lambda (b env)
                                                         (aSub (bind-nombre b)
-                                                              (exprV (bind-valor b) env)
+                                                              (interp (bind-valor b) env)
                                                               env))
                                                       amb
                                                       params))
                                   (interp body (foldl (lambda (b env)
                                                         (aSub (bind-nombre b)
-                                                              (exprV (bind-valor b) amb)
+                                                              (interp (bind-valor b) amb)
                                                               env))
                                                       amb
                                                       params)))]
-      [rec (definiciones uso)
-      (interp uso
-              (foldl (lambda (binds acu)
-                       (letrec ([amb-recur (lambda (v)
-                                               (if (symbol=? v (bind-nombre binds))
-                                                   (exprV  (bind-valor binds) amb-recur)
-                                                   (lookup v acu)))])
-                         amb-recur))
-                     amb
-                     definiciones))]
       [fun (lst-params cuerpo) (closureV lst-params 
                                          cuerpo 
                                          amb)]
-      [app (fun-expr arg-expr) (let ([val-fun (punto-estricto (interp fun-expr amb))]
+      [app (fun-expr arg-expr) (let ([val-fun (interp fun-expr amb)]
                                      [val-arg (map (lambda (a)
-                                                     (exprV a amb)) arg-expr)])
-                                 (type-case RCFWAEL-Value val-fun
+                                                     (interp a amb)) arg-expr)])
+                                 (type-case CFWAEL-Value val-fun
                                    [closureV (params-cl cuerpo-cl amb-cl)
                                              (interp cuerpo-cl
                                                      (foldl (lambda (ls la env)
@@ -226,6 +259,7 @@
                                                             val-arg))]
                                    [else (error 'app "no se puede interpretar")]
                                    ))]
+      [else "El sistema checador de tipos se encarga de ellos"]
       )))
 
 ;; Dado un simbolo que representa una funcion, aplica esa funcion
