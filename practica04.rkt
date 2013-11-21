@@ -62,7 +62,7 @@
   (lambda ()
     (lambda (x) 
       (error 'lookup
-             (string-append "No se encontro " (symbol->string x))))
+             (string-append "No se encontro a:  " (symbol->string x))))
     ))
 
 
@@ -174,6 +174,14 @@
         [binop (fun lizq lder) (checa-fun fun 
                                           (type-of-amb lizq amb)
                                           (type-of-amb lder amb))]
+        [id (v) (lookup v amb)]
+        [iff (test then else) (if (equal? (type-of-amb test amb) (tboolean))
+                                  (let {[val (interp test amb)]}
+                                    (if (boolV-b val)
+                                        (type-of-amb then amb)
+                                        (type-of-amb else amb)
+                                      ))
+                                  "Error: La condicion debe de ser de tipo boolean")]
         [else "Error en el checador de tipos"]
         )))
 
@@ -198,6 +206,11 @@
                (tboolean)
                (string-append (string-append "Error: En " (symbol->string f)) 
                               " se esperan argumentos de tipo boolean"))]
+      [(string-append) (if (and (equal? l (tstring))
+                                (equal? r (tstring)))
+                           (tstring)
+                           (string-append (string-append "Error: En " (symbol->string f)) 
+                                          " se esperan argumentos de tipo string"))]
       )))
 
 ;;
