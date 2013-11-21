@@ -20,7 +20,7 @@
   [with (arterisco boolean?)
         (vars (listof bindType?)) 
         (body CFWAEL?)]
-  [fun (param-for (listof symbol?)) 
+  [fun (param-for (listof paramFormal?)) 
        (fun-body CFWAEL?)]
   [app (fun-exp CFWAEL?) (param-reales (listof CFWAEL?))]
   [lempty]
@@ -36,7 +36,9 @@
         (valor CFWAEL?)]
   [bindType (nombre symbol?)
             (tipo Tipo?)
-            (valor CFWAEL?)])
+            (valor CFWAEL?)]
+  [paramFormal (nombre symbol?)
+               (tipo Tipo?)])
 
 ; Tenemos ambientes procedurales
 ;; Nos permite saber si una expresion es un ambiente.
@@ -99,8 +101,12 @@
   [tchar]
   [tboolean]
   [tstring]
-  [tlist]
-  [tlistof (t Tipo?)])
+  [tlista]
+  [tlistof (t Tipo?)]
+  [tfun (params (listof paramFormal?))
+        (cuerpo CFWAEL?)
+        (env Ambiente?)])
+
 
 ;; Dada una lista de tuplas, donde cada tupla contiene un identificador
 ;; y un valor, regresa una lista de binding, que es la representacion en
@@ -123,6 +129,18 @@
                      (parser (cadddr trio))))
          lista-binds)))
 
+
+;;
+;;
+(define parsea-params-formales
+  (lambda (lista-binds)
+    (map (lambda (pareja)
+           (paramFormal (car pareja)
+                        (parsea-tipo (caddr pareja))))
+         lista-binds)))
+
+;;
+;;
 (define parsea-tipo
   (lambda (t)
     (case t
@@ -162,7 +180,7 @@
          [(char?) (es-caracter? (parser (cadr expresion)))]
          [(list?) (es-lista? (parser (cadr expresion)))]
          [(string?) (es-cadena? (parser (cadr expresion)))]
-         [(fun) (fun (cadr expresion)
+         [(fun) (fun (parsea-params-formales (cadr expresion))
                      (parser (caddr expresion)))]
 
          [(if) (iff (parser (cadr expresion))
@@ -202,7 +220,7 @@
         [bolean (b) (tboolean)]
         [es-boleano? (e) (interp (bolean (equal? (type-of-amb e amb) (tboolean))) amb)]
         [es-caracter? (e) (interp (bolean (equal? (type-of-amb e amb) (tchar))) amb)]
-        [es-lista? (e) (interp (bolean (equal? (type-of-amb e amb) (tlist))) amb)]
+        [es-lista? (e) (interp (bolean (equal? (type-of-amb e amb) (tlista))) amb)]
         [es-cadena? (e) (interp (bolean (equal? (type-of-amb e amb) (tstring))) amb)]
         [binop (fun lizq lder) (checa-fun fun 
                                           (type-of-amb lizq amb)
@@ -215,11 +233,69 @@
                                         (type-of-amb else amb)
                                       ))
                                   "Error: La condicion debe de ser de tipo boolean")]
-        [with (ast params body) "with"]
+        [lempty () (tlista)]
+        [with (ast params body) (if ast
+                                    (type-of-amb body (foldl (lambda (bind env)
+                                                               (if (equal? (bindType-tipo bind)
+                                                                           (type-of-amb (bindType-valor bind) env))
+                                                                   (aSubType (bindType-nombre bind)
+                                                                             (bindType-tipo bind)
+                                                                             amb)
+                                                                   (error 'type-of "Los parametros no coinciden con su declaracion")))
+                                                             amb
+                                                             params))
+                                    (type-of-amb body (foldl (lambda (bind env)
+                                                               (if (equal? (bindType-tipo bind)
+                                                                           (type-of-amb (bindType-valor bind) amb))
+                                                                   (aSubType (bindType-nombre bind)
+                                                                             (bindType-tipo bind)
+                                                                             amb)
+                                                                   (error 'type-of "Los parametros no coinciden con su declaracion")))
+                                                             amb
+                                                             params)))]
+        
+        [fun (params body) (tfun params
+                                 body
+                                 amb)]
+        [app (funcion argumentos)
+             (let {[tipo-funcion (type-of-amb funcion amb)]
+                   [tipos-args (map (lambda (v) 
+                                      (type-of-amb v amb)) argumentos)]}
+               (type-case Tipo tipo-funcion
+                 [tfun (tipos-fun cuerpo-fun amb-fun)
+                       (type-of-amb cuerpo-fun (foldl (lambda (tpf tpr env)
+                                                        (if (equal? (paramFormal-tipo tpf) tpr)
+                                                            (aSubType (paramFormal-nombre tpf)
+                                                                      tpr
+                                                                      env)
+                                                            (error-app (paramFormal-nombre tpf)
+                                                                       (paramFormal-tipo tpf))))
+                                                        amb-fun
+                                                        tipos-fun
+                                                        tipos-args))]
+                 [else (error 'Error "Se esperaba algo del tipo funcion")]))]
         [else "Error en el checador de tipos"]
         )))
 
 
+
+(define error-app
+  (lambda (id tipo)
+    (type-case Tipo tipo
+      [tnumber () (error 'Error (string-append (string-append "Se esperaba que el parametro "
+                                                              (symbol->string id))
+                                               " fuera del tipo number"))]
+      [tchar () (error 'Error (string-append (string-append "Se esperaba que el parametro "
+                                                              (symbol->string id))
+                                               " fuera del tipo char"))]
+      [tboolean () (error 'Error (string-append (string-append "Se esperaba que el parametro "
+                                                              (symbol->string id))
+                                               " fuera del tipo boolean"))]
+      [tstring () (error 'Error (string-append (string-append "Se esperaba que el parametro "
+                                                              (symbol->string id))
+                                               " fuera del tipo string"))]
+      [else (error 'Error "Se esperaba otro tipo de parametro")]
+      )))
 
 ;;
 (define checa-fun
