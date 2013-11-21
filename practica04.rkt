@@ -60,7 +60,10 @@
           (lookup nombre resto-amb)
           ))))
 
-;;
+;; Crea una funcion la cual se encarga de representar los ambientes, si
+;; el nombre corresponde con el bound-name se regresa el tipo, si no
+;; se busca en el siguiente aSubType
+;; aSubType: symbol -> Tipo -> procedure -> procedure
 (define aSubType
   (lambda (bound-name bound-type resto-amb)
     (lambda (nombre)
@@ -94,8 +97,8 @@
           (resto CFWAEL-Value?)])
 
 
-;;
-;;
+;; Los tipos se encargan de mostrar la forma mas abstracta de lo que nuestro
+;; checador de tipos abstrae.
 (define-type Tipo
   [tnumber]
   [tchar]
@@ -119,8 +122,10 @@
                  (parser (cadr pareja))))
          lista-binds)))
 
-;;
-;;
+;; Dada una lista de tercias, donde cada tercia contiene un identificador
+;; un tipo y un valor, regresa una lista de binding, que es la representacion en
+;; nuestra sintaxis.
+;; parsea-bindings-type: listof(B) -> listof(bind?)
 (define parsea-bindings-type
   (lambda (lista-binds)
     (map (lambda (trio)
@@ -130,8 +135,10 @@
          lista-binds)))
 
 
-;;
-;;
+;; Dada una lista de tuplas, donde cada tupla contiene un identificador
+;; y un tipo, regresa una lista de binding, que es la representacion en
+;; nuestra sintaxis.
+;; parsea-params-formales: listof(B) -> listof(bind?)
 (define parsea-params-formales
   (lambda (lista-binds)
     (map (lambda (pareja)
@@ -139,8 +146,8 @@
                         (parsea-tipo (caddr pareja))))
          lista-binds)))
 
-;;
-;;
+;; Dado un simbolo que representa un tipo nuestro parseadro
+;; lo pasa a nuestra sintaxis.
 (define parsea-tipo
   (lambda (t)
     (case t
@@ -203,14 +210,14 @@
       )))
 
 
-;;
-;;
+;; Funcion principal de nuestro checador de tipos.
+;; Manda llamar una funcion auxiliar que trabaja con ambientes
 (define type-of
   (lambda (expres)
     (type-of-amb expres (mtSub))))
 
-;;
-;;
+;; Funcion principal que se encarga de trabajar con ambientes
+;; los cuales solo manejan identificadores y tipos.
 (define type-of-amb
   (lambda (expresion amb)
       (type-case CFWAEL expresion
@@ -234,6 +241,27 @@
                                       ))
                                   "Error: La condicion debe de ser de tipo boolean")]
         [lempty () (tlista)]
+        [lcons (cabeza resto) (let {[headtype (type-of-amb cabeza amb)]
+                                    [resttype (type-of-amb resto amb)]}
+                                (type-case Tipo resttype
+                                  [tlista () (tlistof headtype)]
+                                  [tlistof (t) (if (equal? headtype t) 
+                                                   (tlistof t)
+                                                   (error 'Error "Se esperaba que todos los elementos fueran del mismo tipo")
+                                                   )]
+                                  [else (error 'Error "Se esperaba una lista para la funcion cons")]
+                                  )
+                                )]
+        [lcar (lista) (let {[val (type-of-amb lista amb)]}
+                        (type-case Tipo val
+                          [tlista () (error 'lcar "No se puede obtener el car de la lista vacia")]
+                          [tlistof (t) t]
+                          [else (error 'Error "La funcion car necesita de una lista")]))]
+        [lcdr (lista) (let {[res (type-of-amb lista amb)]}
+                        (type-case Tipo res
+                          [tlista () (tlista)]
+                          [tlistof (t) res]
+                          [else (error 'Error "La funcion cdr necesita de una lista")]))]
         [with (ast params body) (if ast
                                     (type-of-amb body (foldl (lambda (bind env)
                                                                (if (equal? (bindType-tipo bind)
@@ -274,11 +302,12 @@
                                                         tipos-fun
                                                         tipos-args))]
                  [else (error 'Error "Se esperaba algo del tipo funcion")]))]
-        [else "Error en el checador de tipos"]
+        ;[else "Error en el checador de tipos"]
         )))
 
 
-
+;; Manda un error agradable cuando los parametros de la aplicacion no corresponden 
+;; a los de la funcion llamada. 
 (define error-app
   (lambda (id tipo)
     (type-case Tipo tipo
@@ -297,7 +326,8 @@
       [else (error 'Error "Se esperaba otro tipo de parametro")]
       )))
 
-;;
+;; Funcion que se encarga de analizar los parametros de una operacion binaria,
+;; si no se cumplen estos parametros, regresa un Error.
 (define checa-fun
   (lambda (f l r)
     (case f
@@ -327,6 +357,31 @@
 (define prueba
   (lambda (e)
     (type-of (parser e))))
+
+
+(define p1
+  (prueba '({fun {[a : number]
+                  [b : number]} { + a b}} 3 8)))
+
+(define p2
+  (prueba '({fun {[a : string]
+                  [b : string]} { string-append a b}} "Hello " "World!")))
+
+;(define p2-v
+ ; (prueba '({fun {[a : string]
+  ;                [b : string]} { string-append a b}} "Hello " lempty)))
+
+(define p3
+  (prueba '(lcons 7 (lcons 8 (lcons 9 lempty)))))
+
+;(define p4
+;  (prueba '(lcons 7 (lcons 8 (lcons "Fallo" lempty)))))
+
+(define p5
+  (prueba '(+ 7 5)))
+
+(define p6
+  (prueba '(+ 7 #t)))
 ;-------------------------------------------------------------------------------
 ;-------------------------------------------------------------------------------
 ;------------------------ Cosas Para Interpretar -------------------------------
