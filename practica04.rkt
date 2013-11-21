@@ -18,7 +18,7 @@
        (then-exp CFWAEL?)
        (else-exp CFWAEL?)]
   [with (arterisco boolean?)
-        (vars (listof bind?)) 
+        (vars (listof bindType?)) 
         (body CFWAEL?)]
   [fun (param-for (listof symbol?)) 
        (fun-body CFWAEL?)]
@@ -33,7 +33,10 @@
 ;; un Binding consiste de un id de tipo symbol y un valor de tipo FWAEL
 (define-type Binding
   [bind (nombre symbol?)
-        (valor CFWAEL?)])
+        (valor CFWAEL?)]
+  [bindType (nombre symbol?)
+            (tipo Tipo?)
+            (valor CFWAEL?)])
 
 ; Tenemos ambientes procedurales
 ;; Nos permite saber si una expresion es un ambiente.
@@ -52,6 +55,15 @@
     (lambda (nombre)
       (if (symbol=? bound-name nombre)
           bound-value
+          (lookup nombre resto-amb)
+          ))))
+
+;;
+(define aSubType
+  (lambda (bound-name bound-type resto-amb)
+    (lambda (nombre)
+      (if (symbol=? bound-name nombre)
+          bound-type
           (lookup nombre resto-amb)
           ))))
 
@@ -101,6 +113,24 @@
                  (parser (cadr pareja))))
          lista-binds)))
 
+;;
+;;
+(define parsea-bindings-type
+  (lambda (lista-binds)
+    (map (lambda (trio)
+           (bindType (car trio)
+                     (parsea-tipo (caddr trio))
+                     (parser (cadddr trio))))
+         lista-binds)))
+
+(define parsea-tipo
+  (lambda (t)
+    (case t
+      [(number) (tnumber)]
+      [(char) (tchar)]
+      [(boolean) (tboolean)]
+      [(string) (tstring)]
+      )))
 
 ;; Busca una variable en el ambiente, si la encuentra regresa el valor de
 ;; la variable, si no sigue buscando en los otros ambientes.
@@ -139,10 +169,10 @@
                                        (parser (caddr expresion))
                                        (parser (cadddr expresion)))]
          [(with) (with #f 
-                       (parsea-bindings (cadr expresion))
+                       (parsea-bindings-type (cadr expresion))
                        (parser (caddr expresion)))]
          [(with*) (with #t
-                       (parsea-bindings (cadr expresion))
+                       (parsea-bindings-type (cadr expresion))
                        (parser (caddr expresion)))]
          [(lempty) (lempty)]
          [(lcons) (lcons (parser (cadr expresion))
@@ -156,10 +186,13 @@
 
 
 ;;
+;;
 (define type-of
   (lambda (expres)
     (type-of-amb expres (mtSub))))
 
+;;
+;;
 (define type-of-amb
   (lambda (expresion amb)
       (type-case CFWAEL expresion
@@ -182,6 +215,7 @@
                                         (type-of-amb else amb)
                                       ))
                                   "Error: La condicion debe de ser de tipo boolean")]
+        [with (ast params body) "with"]
         [else "Error en el checador de tipos"]
         )))
 
